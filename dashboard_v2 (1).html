@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WORKBENCH — Dashboard de Trabajo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,300&family=Syne:wght@400;700;800;900&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --amber:    #f59e0b;
+  --amber-lo: rgba(245,158,11,.08);
+  --green:    #10b981;
+  --green-lo: rgba(16,185,129,.08);
+  --red:      #ef4444;
+  --red-lo:   rgba(239,68,68,.08);
+  --blue:     #60a5fa;
+  --blue-lo:  rgba(96,165,250,.08);
+  --violet:   #a78bfa;
+  --bg0: #06060a;
+  --bg1: #0c0c12;
+  --bg2: #121218;
+  --bg3: #18181f;
+  --bg4: #20202a;
+  --bg5: #2a2a36;
+  --bdr: #2c2c3a;
+  --bdr2:#3a3a4d;
+  --txt: #ddddf0;
+  --muted:#6464820;
+  --mut: #646480;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { height: 100%; }
+
+body {
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg0);
+  color: var(--txt);
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+/* ── Grid texture ── */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Noise ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  opacity: .4;
+}
+
+/* ── Layout wrapper above noise ── */
+#app { position: relative; z-index: 1; }
+
+/* ── Card ── */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--bdr);
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+}
+.card-top {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--amber);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .3s ease;
+}
+.card:hover .card-top,
+.card.active .card-top  { transform: scaleX(1); }
+.card.active .card-top  { background: var(--green); }
+.card.alerting .card-top{ background: var(--red); transform: scaleX(1); }
+.card.focus-on .card-top{ background: var(--violet); transform: scaleX(1); }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase;
+  border: 1px solid var(--bdr2);
+  background: var(--bg3);
+  color: var(--txt);
+  cursor: pointer;
+  transition: all .12s;
+  border-radius: 2px;
+  outline: none;
+  user-select: none;
+  white-space: nowrap;
+}
+.btn:hover   { border-color: var(--amber); color: var(--amber); background: var(--amber-lo); }
+.btn:active  { transform: scale(.96); }
+.btn:disabled{ opacity: .3; cursor: not-allowed; transform: none !important; pointer-events: none; }
+.btn.b-green { border-color: var(--green); color: var(--green); }
+.btn.b-green:hover { background: var(--green-lo); }
+.btn.b-red   { border-color: var(--red); color: var(--red); }
+.btn.b-red:hover   { background: var(--red-lo); }
+.btn.b-amber { border-color: var(--amber); color: var(--amber); }
+.btn.b-amber:hover { background: var(--amber-lo); }
+.btn.b-violet{ border-color: var(--violet); color: var(--violet); }
+.btn.b-violet:hover{ background: rgba(167,139,250,.08); }
+.btn.b-blue  { border-color: var(--blue); color: var(--blue); }
+.btn.b-blue:hover { background: var(--blue-lo); }
+.btn.active  { background: var(--amber-lo); border-color: var(--amber); color: var(--amber); }
+
+/* ── Display clock ── */
+.sw-display {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 300;
+  font-size: 56px;
+  letter-spacing: .04em;
+  line-height: 1;
+  color: var(--txt);
+  transition: color .3s;
+}
+.sw-display.running { color: var(--green); }
+.sw-display.paused  { color: var(--mut);   }
+
+/* ── Tag ── */
+.tag {
+  font-size: 9px; font-weight: 700;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--mut);
+}
+
+/* ── Inputs ── */
+.inp {
+  background: var(--bg1);
+  border: 1px solid var(--bdr);
+  border-radius: 2px;
+  color: var(--txt);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color .15s;
+  width: 100%;
+}
+.inp:focus { border-color: var(--amber); }
+.inp[type=number] { text-align: center; -moz-appearance: textfield; }
+.inp[type=number]::-webkit-outer-spin-button,
+.inp[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+.inp[type=range] {
+  -webkit-appearance: none; height: 3px;
+  background: var(--bg5); border: none; padding: 0; cursor: pointer;
+  border-radius: 2px;
+}
+.inp[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px;
+  background: var(--amber); border-radius: 50%;
+  border: 2px solid var(--bg2); cursor: pointer;
+}
+.inp[type=range]::-moz-range-thumb {
+  width: 14px; height: 14px; background: var(--amber);
+  border-radius: 50%; border: 2px solid var(--bg2); cursor: pointer;
+}
+
+/* ── Drop zone ── */
+.drop-zone {
+  border: 1px dashed var(--bdr2);
+  border-radius: 3px;
+  transition: all .2s;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.drop-zone::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: var(--amber-lo);
+  opacity: 0; transition: opacity .2s;
+}
+.drop-zone.drag-over { border-color: var(--amber); }
+.drop-zone.drag-over::before { opacity: 1; }
+.drop-zone.processing { border-color: var(--blue); animation: borderPulse 1s ease infinite; }
+@keyframes borderPulse {
+  0%,100% { border-color: var(--blue); }
+  50%      { border-color: rgba(96,165,250,.3); }
+}
+
+/* ── Progress bar ── */
+.pbar { height: 2px; background: var(--bg5); border-radius: 2px; overflow: hidden; }
+.pfill { height: 100%; border-radius: 2px; transition: width .4s linear, background .4s; }
+
+/* ── Pill badge ── */
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 2px; border: 1px solid;
+  font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+}
+
+/* ── Log items ── */
+.log-row {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 7px 10px;
+  border-left: 2px solid var(--bdr);
+  font-size: 10px; line-height: 1.6;
+  background: var(--bg1);
+  border-radius: 0 2px 2px 0;
+  animation: fadeSlide .2s ease;
+}
+.log-row.l-pause  { border-color: var(--blue); }
+.log-row.l-file   { border-color: var(--green); }
+.log-row.l-alert  { border-color: var(--red); }
+.log-row.l-start  { border-color: var(--amber); }
+.log-row.l-tramo  { border-color: var(--violet); }
+@keyframes fadeSlide {
+  from { opacity:0; transform: translateY(-4px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+
+/* ── Settings panel ── */
+#settingsPanel {
+  max-height: 0; overflow: hidden;
+  transition: max-height .35s cubic-bezier(.4,0,.2,1), opacity .25s;
+  opacity: 0;
+}
+#settingsPanel.open { max-height: 400px; opacity: 1; }
+
+/* ── Result card ── */
+.res-card {
+  background: var(--bg1);
+  border: 1px solid var(--bdr);
+  border-radius: 2px;
+  padding: 10px 12px;
+  font-size: 10px;
+  animation: fadeSlide .2s ease;
+  position: relative;
+}
+.res-card .dl-btn {
+  position: absolute; top: 8px; right: 8px;
+  font-size: 9px; padding: 3px 8px;
+}
+
+/* ── Status dot ── */
+.dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--mut);
+  flex-shrink: 0;
+  transition: background .3s;
+}
+.dot.on   { background: var(--green); animation: dotPulse 1.8s ease infinite; }
+.dot.warn { background: var(--amber); animation: dotPulse 1s ease infinite; }
+.dot.err  { background: var(--red);   animation: dotPulse .5s ease infinite; }
+@keyframes dotPulse {
+  0%,100% { opacity:1; transform:scale(1); }
+  50%      { opacity:.3; transform:scale(.6); }
+}
+
+/* ── Toast ── */
+#toast {
+  position: fixed; top: 16px; right: 16px; z-index: 9999;
+  width: 340px;
+  background: var(--bg3);
+  border: 1px solid var(--red);
+  border-left: 3px solid var(--red);
+  border-radius: 3px;
+  padding: 14px 16px;
+  transform: translateX(380px);
+  transition: transform .35s cubic-bezier(.16,1,.3,1);
+  box-shadow: 0 24px 64px rgba(0,0,0,.7);
+}
+#toast.show { transform: translateX(0); }
+
+/* ── Focus mode indicator ── */
+#focusBadge {
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+  background: var(--bg3);
+  border: 1px solid var(--violet);
+  border-radius: 2px;
+  padding: 6px 16px;
+  font-size: 10px; color: var(--violet);
+  letter-spacing: .1em; text-transform: uppercase;
+  z-index: 9998;
+  display: none;
+  animation: fadeSlide .3s ease;
+}
+
+/* ── Notif perm banner ── */
+#notifBanner {
+  background: linear-gradient(90deg, var(--amber-lo), transparent);
+  border: 1px solid var(--amber);
+  border-radius: 2px;
+  padding: 8px 14px;
+  font-size: 10px;
+  display: none;
+  align-items: center; gap: 10px;
+  margin-bottom: 4px;
+}
+
+/* ── Video progress overlay ── */
+.vid-overlay {
+  position: absolute; inset: 0;
+  background: rgba(6,6,10,.85);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; font-size: 11px; color: var(--blue);
+  z-index: 2;
+  border-radius: 3px;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg1); }
+::-webkit-scrollbar-thumb { background: var(--bdr2); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--mut); }
+
+/* ── Presets ── */
+.preset-btn {
+  padding: 5px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  border: 1px solid var(--bdr2);
+  background: var(--bg3); color: var(--mut);
+  cursor: pointer; border-radius: 2px;
+  transition: all .12s;
+}
+.preset-btn:hover, .preset-btn.sel {
+  border-color: var(--amber); color: var(--amber);
+  background: var(--amber-lo);
+}
+
+/* ── Responsive ── */
+@media (max-width: 860px) {
+  #mainGrid { grid-template-columns: 1fr !important; }
+  #rightCol { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  #settingsGrid { grid-template-columns: 1fr 1fr !important; }
+  .hdr-focus-btn span { display: none; }
+  .hdr-settings-btn span { display: none; }
+}
+@media (max-width: 640px) {
+  #rightCol { grid-template-columns: 1fr !important; }
+  .sw-display { font-size: 40px !important; }
+  #settingsGrid { grid-template-columns: 1fr !important; }
+  #hdrCenter { display: none; }
+  header > div { flex-wrap: wrap; gap: 8px; }
+  main { padding: 10px 12px !important; }
+}
+@media (max-width: 400px) {
+  .sw-display { font-size: 32px !important; }
+  #grandTotalDisplay { font-size: 22px !important; }
+  .btn { padding: 7px 10px; font-size: 9px; letter-spacing: .08em; }
+}
+</style>
+</head>
+
+<body>
+<div id="app">
+
+<!-- ══════════════ HEADER ══════════════════════════════════ -->
+<header style="background:var(--bg1);border-bottom:1px solid var(--bdr);position:sticky;top:0;z-index:100;">
+  <div style="padding:10px 20px;display:flex;align-items:center;justify-content:space-between;">
+
+    <!-- Left: Brand -->
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div style="font-family:'Syne',sans-serif;font-weight:900;font-size:14px;letter-spacing:.22em;color:var(--amber);">
+        WORKBENCH
+      </div>
+      <div style="width:1px;height:14px;background:var(--bdr2);"></div>
+      <div class="tag">v2.1 — Productivity OS</div>
+    </div>
+
+    <!-- Center: Clock -->
+    <div id="hdrCenter" style="display:flex;align-items:center;gap:20px;">
+      <div id="realClock" style="font-size:12px;color:var(--mut);letter-spacing:.08em;font-variant-numeric:tabular-nums;"></div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="dot" id="hdrDot"></div>
+        <span style="font-size:10px;color:var(--mut);" id="hdrStatus">INACTIVO</span>
+      </div>
+    </div>
+
+    <!-- Right: Controls -->
+    <div style="display:flex;align-items:center;gap:6px;">
+      <!-- Notif status -->
+      <div style="display:flex;align-items:center;gap:4px;" id="notifStatus" title="Estado notificaciones">
+        <div class="dot" id="notifDot"></div>
+        <span style="font-size:9px;color:var(--mut);" id="notifLabel">NOTIF</span>
+      </div>
+      <div style="width:1px;height:14px;background:var(--bdr2);margin:0 4px;"></div>
+      <!-- Focus mode -->
+      <button class="btn b-violet hdr-focus-btn" id="btnFocus" title="Modo Enfoque — muestra el timer en el título de pestaña">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+        <span>Enfoque</span>
+      </button>
+      <!-- Settings -->
+      <button class="btn hdr-settings-btn" id="btnSettings" title="Panel de ajustes">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path stroke-linecap="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <span>Ajustes</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Notif permission banner -->
+  <div id="notifBanner" style="background:linear-gradient(90deg,var(--amber-lo),transparent);border:1px solid var(--amber);border-radius:2px;padding:8px 14px;font-size:10px;display:none;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px;">
+    <svg width="13" height="13" fill="none" stroke="var(--amber)" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0;"><path stroke-linecap="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+    <span id="notifBannerMsg" style="color:var(--txt);flex:1;min-width:180px;line-height:1.5;"></span>
+    <button class="btn b-amber" id="btnGrantNotif" style="padding:3px 10px;font-size:9px;display:none;" onclick="requestNotifPerm()">Conceder permiso</button>
+  </div>
+
+  <!-- ══ SETTINGS PANEL ══ -->
+  <div id="settingsPanel" style="border-top:1px solid var(--bdr);background:var(--bg1);">
+    <div id="settingsGrid" style="padding:16px 20px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:20px;">
+
+      <!-- Preset intervals -->
+      <div>
+        <div class="tag" style="margin-bottom:8px;">Intervalos rápidos</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">
+          <button class="preset-btn" onclick="applyPreset(0,15,0)">15 min</button>
+          <button class="preset-btn" onclick="applyPreset(0,20,0)">20 min</button>
+          <button class="preset-btn" onclick="applyPreset(0,30,0)">30 min</button>
+          <button class="preset-btn" onclick="applyPreset(1,0,0)">1 hora</button>
+        </div>
+      </div>
+
+      <!-- Custom interval -->
+      <div>
+        <div class="tag" style="margin-bottom:8px;">Intervalo personalizado</div>
+        <div style="display:flex;align-items:center;gap:5px;">
+          <div style="flex:1;text-align:center;">
+            <input type="number" class="inp" id="alertH" value="0" min="0" max="23">
+            <div class="tag" style="margin-top:3px;">h</div>
+          </div>
+          <span style="color:var(--mut);">:</span>
+          <div style="flex:1;text-align:center;">
+            <input type="number" class="inp" id="alertM" value="0" min="0" max="59">
+            <div class="tag" style="margin-top:3px;">m</div>
+          </div>
+          <span style="color:var(--mut);">:</span>
+          <div style="flex:1;text-align:center;">
+            <input type="number" class="inp" id="alertS" value="30" min="0" max="59">
+            <div class="tag" style="margin-top:3px;">s</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Volume + Freq -->
+      <div>
+        <div class="tag" style="margin-bottom:8px;">Audio de alerta</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+              <span style="font-size:10px;color:var(--mut);">Volumen</span>
+              <span style="font-size:10px;color:var(--amber);" id="volLabel">60%</span>
+            </div>
+            <input type="range" class="inp" id="volSlider" min="0" max="100" value="60" style="width:100%;">
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+              <span style="font-size:10px;color:var(--mut);">Frecuencia (tono generado)</span>
+              <span style="font-size:10px;color:var(--amber);" id="freqLabel">880 Hz</span>
+            </div>
+            <input type="range" class="inp" id="freqSlider" min="220" max="2000" value="880" style="width:100%;">
+          </div>
+          <!-- Custom sound upload -->
+          <div style="padding-top:4px;border-top:1px solid var(--bdr);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+              <span style="font-size:10px;color:var(--mut);">Sonido personalizado</span>
+              <span style="font-size:9px;padding:1px 6px;border-radius:2px;border:1px solid var(--bdr2);color:var(--mut);" id="soundChip">Tono generado</span>
+            </div>
+            <input type="file" id="soundFileInput" accept="audio/*" style="display:none;">
+            <div style="display:flex;gap:4px;">
+              <button class="btn" style="flex:1;font-size:9px;padding:5px 6px;" id="btnPickSound">
+                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M9 8.25H7.5a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25H15M9 12l3 3m0 0l3-3m-3 3V2.25"/></svg>
+                Subir audio
+              </button>
+              <button class="btn b-red" style="font-size:9px;padding:5px 8px;" id="btnClearSound" title="Volver al tono generado" disabled>✕</button>
+            </div>
+            <div style="font-size:9px;color:var(--mut);margin-top:4px;line-height:1.5;">
+              MP3, WAV, OGG, etc. Usa el mismo control de volumen.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Custom message -->
+      <div>
+        <div class="tag" style="margin-bottom:8px;">Mensaje de notificación</div>
+        <textarea class="inp" id="notifMsg" rows="3"
+          style="resize:none;line-height:1.5;font-size:10px;">Adjunta tu progreso: Es momento de validar tus avances</textarea>
+        <button class="btn b-amber" style="margin-top:6px;width:100%;font-size:9px;padding:5px;" id="btnTestAlert">
+          ▶ Probar Alerta
+        </button>
+      </div>
+
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════ MAIN ════════════════════════════════════ -->
+<main id="mainGrid" style="padding:16px 20px;display:grid;grid-template-columns:1fr 360px;gap:14px;position:relative;z-index:1;">
+
+  <!-- ─── LEFT: CONVERSION ─────────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:14px;min-width:0;">
+
+    <div class="card" id="convCard">
+      <div class="card-top"></div>
+      <div style="padding:18px 20px;">
+
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div>
+            <div class="tag" style="margin-bottom:4px;">Módulo 01</div>
+            <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:15px;letter-spacing:.02em;">
+              Compresor Zero-Click
+            </div>
+          </div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;">
+            <span class="pill" style="color:var(--green);border-color:var(--green);">IMG→WebP</span>
+            <span class="pill" style="color:var(--blue);border-color:var(--blue);">MP4→WebM</span>
+            <span class="pill" style="color:var(--amber);border-color:var(--amber);">Docs→ZIP</span>
+          </div>
+        </div>
+
+        <!-- DROP ZONE -->
+        <div class="drop-zone" id="dropZone" style="padding:40px 20px;text-align:center;position:relative;min-height:160px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;">
+          <input type="file" id="fileInput" multiple accept="*/*" style="display:none">
+
+          <!-- Video processing overlay -->
+          <div class="vid-overlay" id="vidOverlay" style="display:none;">
+            <svg width="24" height="24" fill="none" stroke="var(--blue)" stroke-width="1.5" viewBox="0 0 24 24" style="animation:spin 2s linear infinite"><path stroke-linecap="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+            <div id="vidStatus" style="letter-spacing:.05em;"></div>
+            <div class="pbar" style="width:200px;">
+              <div class="pfill" id="vidProgress" style="width:0%;background:var(--blue);"></div>
+            </div>
+          </div>
+
+          <svg width="32" height="32" fill="none" stroke="var(--mut)" stroke-width="1.2" viewBox="0 0 24 24" id="dropIcon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
+          </svg>
+          <div style="font-size:12px;color:var(--mut);">
+            Arrastrá archivos aquí — <label for="fileInput" style="color:var(--amber);cursor:pointer;text-decoration:underline dotted;">o hacé clic</label>
+          </div>
+          <div class="tag" style="max-width:320px;text-align:center;line-height:1.8;">
+            Imágenes → WebP · Video MP4 → WebM · Docs &amp; múltiples → ZIP automático
+          </div>
+        </div>
+
+        <!-- Active file list -->
+        <div id="queueList" style="margin-top:10px;max-height:70px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;"></div>
+
+        <!-- Results -->
+        <div id="results" style="margin-top:10px;max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─── RIGHT: STOPWATCH + ALERTS ────────────────────── -->
+  <div id="rightCol" style="display:flex;flex-direction:column;gap:14px;min-width:0;">
+
+    <!-- STOPWATCH -->
+    <div class="card" id="swCard">
+      <div class="card-top"></div>
+      <div style="padding:18px 20px;">
+        <div class="tag" style="margin-bottom:12px;">Módulo 02 — Cronómetro</div>
+
+        <!-- Display -->
+        <div style="margin-bottom:16px;">
+          <div class="sw-display" id="swDisplay">00:00:00<span style="font-size:22px;opacity:.5;" id="swMs">.00</span></div>
+          <div style="margin-top:6px;display:flex;align-items:center;gap:8px;">
+            <div class="dot" id="swDot"></div>
+            <span style="font-size:10px;color:var(--mut);" id="swStatus">LISTO</span>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div style="display:flex;gap:6px;margin-bottom:14px;">
+          <button class="btn b-green" id="btnStart" style="flex:1;">
+            <svg width="11" height="11" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            Inicio
+          </button>
+          <button class="btn" id="btnPause" disabled style="flex:1;">
+            <svg width="11" height="11" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            Pausa
+          </button>
+          <button class="btn b-red" id="btnReset">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+          </button>
+        </div>
+
+        <!-- Segment log -->
+        <div style="margin-bottom:12px;">
+          <div class="tag" style="margin-bottom:6px;">Historial de tramos</div>
+          <div id="tramoLog" style="max-height:110px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
+            <div style="font-size:10px;color:var(--mut);padding:10px 0;text-align:center;">— Sin tramos aún —</div>
+          </div>
+        </div>
+
+        <!-- Grand total accumulator -->
+        <div id="grandTotalBox" style="background:var(--bg1);border:1px solid var(--bdr);border-radius:2px;padding:12px 14px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+            <div class="tag" style="color:var(--amber);">⟶ Total acumulado (todas las sesiones)</div>
+            <button onclick="resetGrandTotal()" title="Reiniciar total acumulado" style="background:none;border:none;cursor:pointer;color:var(--mut);font-size:10px;padding:0 2px;line-height:1;" id="btnResetGT">↺</button>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:8px;">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:300;color:var(--amber);letter-spacing:.04em;font-variant-numeric:tabular-nums;" id="grandTotalDisplay">00:00:00</div>
+            <div style="font-size:10px;color:var(--mut);" id="grandTotalSessions">— 0 sesiones</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ALERTS -->
+    <div class="card" id="alertCard">
+      <div class="card-top"></div>
+      <div style="padding:18px 20px;">
+        <div class="tag" style="margin-bottom:12px;">Módulo 03 — Alertas de Progreso</div>
+
+        <!-- Countdown display -->
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+            <span style="font-size:11px;color:var(--mut);">Próxima alerta</span>
+            <span style="font-size:20px;font-weight:300;color:var(--amber);font-variant-numeric:tabular-nums;" id="alertCountdown">—</span>
+          </div>
+          <div class="pbar">
+            <div class="pfill" id="alertBar" style="width:0%;background:var(--amber);"></div>
+          </div>
+        </div>
+
+        <!-- Toggle -->
+        <div style="display:flex;gap:6px;">
+          <button class="btn b-amber" id="btnAlertToggle" style="flex:1;">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+            Alertas OFF
+          </button>
+        </div>
+
+        <!-- Note -->
+        <div style="margin-top:10px;padding:8px 10px;background:var(--bg1);border-radius:2px;border:1px solid var(--bdr);font-size:9px;color:var(--mut);line-height:1.6;">
+          ⟶ Las alertas sólo corren mientras el cronómetro está activo<br>
+          ⟶ Al pausar o reiniciar, se detienen automáticamente<br>
+          ⟶ Subir un archivo reinicia el contador dentro de la sesión
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /right -->
+
+  <!-- ─── HISTORY: full width ──────────────────────────── -->
+  <div class="card" style="grid-column:1/-1;">
+    <div class="card-top"></div>
+    <div style="padding:18px 20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div>
+          <div class="tag" style="margin-bottom:3px;">Módulo 04</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px;">Historial de Sesión</div>
+        </div>
+        <button class="btn" id="btnClearLog" style="font-size:9px;padding:5px 10px;">Limpiar</button>
+      </div>
+      <div id="sessionLog" style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
+        <div style="font-size:10px;color:var(--mut);padding:16px 0;text-align:center;">— Sin actividad —</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+</div><!-- /app -->
+
+<!-- TOAST -->
+<div id="toast">
+  <div style="display:flex;align-items:flex-start;gap:10px;">
+    <svg width="18" height="18" fill="none" stroke="var(--red)" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0;margin-top:1px"><path stroke-linecap="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+    <div style="flex:1;">
+      <div style="font-size:9px;font-weight:700;color:var(--red);letter-spacing:.12em;margin-bottom:4px;">CHECKPOINT DE PROGRESO</div>
+      <div style="font-size:11px;line-height:1.5;color:var(--txt);" id="toastMsg"></div>
+    </div>
+  </div>
+  <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:6px;">
+    <button class="btn b-red" onclick="hideToast()" style="font-size:9px;padding:5px 12px;">Entendido ✓</button>
+  </div>
+</div>
+
+<!-- FOCUS BADGE -->
+<div id="focusBadge">
+  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="display:inline;vertical-align:middle;margin-right:4px;"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4"/></svg>
+  MODO ENFOQUE — Timer visible en la pestaña
+</div>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   WORKBENCH v2 — Full Productivity OS
+   ═══════════════════════════════════════════════════════════════════ */
+
+// ── DOM refs ──────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+// ── Real clock ────────────────────────────────────────────────────
+function updateClock() {
+  $('realClock').textContent = new Date().toLocaleTimeString('es-AR',{hour12:false});
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ── Helpers ───────────────────────────────────────────────────────
+function fmtTime(ms) {
+  const total = Math.floor(ms / 1000);
+  const h = String(Math.floor(total / 3600)).padStart(2,'0');
+  const m = String(Math.floor((total % 3600) / 60)).padStart(2,'0');
+  const s = String(total % 60).padStart(2,'0');
+  return `${h}:${m}:${s}`;
+}
+function fmtTimeHuman(ms) {
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const parts = [];
+  if (h) parts.push(`${h}h`);
+  if (m) parts.push(`${m}m`);
+  parts.push(`${s}s`);
+  return parts.join(' ');
+}
+function fmtBytes(b) {
+  if (!b) return '0 B';
+  const u = ['B','KB','MB','GB'];
+  const i = Math.floor(Math.log(b) / Math.log(1024));
+  return parseFloat((b / Math.pow(1024,i)).toFixed(1)) + ' ' + u[i];
+}
+function nowTime() {
+  return new Date().toLocaleTimeString('es-AR',{hour12:false});
+}
+
+// ── Session log ───────────────────────────────────────────────────
+let logEmpty = true;
+function addLog(html, type='generic') {
+  const el = $('sessionLog');
+  if (logEmpty) { el.innerHTML = ''; logEmpty = false; }
+  const icons = { start:'▶', pause:'⏸', file:'📦', alert:'🔔', reset:'↺', convert:'✦', focus:'◉' };
+  const ic = icons[type] || '·';
+  const row = document.createElement('div');
+  row.className = `log-row l-${type}`;
+  row.innerHTML = `<span style="color:var(--mut);flex-shrink:0;">${nowTime()}</span>
+    <span style="color:var(--mut);">${ic}</span>
+    <span style="flex:1;">${html}</span>`;
+  el.prepend(row);
+}
+$('btnClearLog').onclick = () => {
+  $('sessionLog').innerHTML = '<div style="font-size:10px;color:var(--mut);padding:16px 0;text-align:center;">— Sin actividad —</div>';
+  logEmpty = true;
+};
+
+// ── Audio engine ──────────────────────────────────────────────────
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+
+function playAlert(volume, freq) {
+  if (!AudioCtx) return;
+  const vol = (volume ?? 60) / 100;
+  const f   = freq ?? 880;
+  try {
+    const ctx = new AudioCtx();
+    // Melodic chime pattern
+    const notes = [f, f*1.25, f*1.5, f*1.25, f];
+    notes.forEach((hz, i) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = hz;
+      const t = ctx.currentTime + i * 0.13;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(vol * .4, t + .04);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + .18);
+      osc.start(t); osc.stop(t + .2);
+    });
+    ctx.close && setTimeout(() => ctx.close(), 2000);
+  } catch(e) { /* audio not available */ }
+}
+
+function getCurVol()  { return parseInt($('volSlider').value)  || 60; }
+function getCurFreq() { return parseInt($('freqSlider').value) || 880; }
+
+$('volSlider').oninput  = () => { $('volLabel').textContent  = $('volSlider').value  + '%'; };
+$('freqSlider').oninput = () => { $('freqLabel').textContent = $('freqSlider').value + ' Hz'; };
+$('btnTestAlert').onclick = () => triggerAlert(true);
+
+// ── Custom sound ──────────────────────────────────────────────────
+let customSoundBuffer  = null;   // decoded AudioBuffer
+let customSoundName    = null;
+
+async function loadCustomSound(file) {
+  try {
+    const arrayBuf = await file.arrayBuffer();
+    const tmpCtx   = new AudioCtx();
+    customSoundBuffer = await tmpCtx.decodeAudioData(arrayBuf);
+    customSoundName   = file.name;
+    tmpCtx.close();
+    $('soundChip').textContent = file.name.length > 18 ? file.name.slice(0,16)+'…' : file.name;
+    $('soundChip').style.color = 'var(--green)';
+    $('soundChip').style.borderColor = 'var(--green)';
+    $('btnClearSound').disabled = false;
+    addLog(`Sonido personalizado cargado: ${file.name}`, 'convert');
+  } catch(e) {
+    alert('No se pudo decodificar el archivo de audio. Intentá con MP3, WAV u OGG.');
+  }
+}
+
+function clearCustomSound() {
+  customSoundBuffer = null;
+  customSoundName   = null;
+  $('soundChip').textContent = 'Tono generado';
+  $('soundChip').style.color = '';
+  $('soundChip').style.borderColor = '';
+  $('btnClearSound').disabled = true;
+}
+
+$('btnPickSound').onclick  = () => $('soundFileInput').click();
+$('btnClearSound').onclick = clearCustomSound;
+$('soundFileInput').onchange = (e) => {
+  if (e.target.files[0]) loadCustomSound(e.target.files[0]);
+  e.target.value = '';
+};
+
+function playCustomSound(volume) {
+  if (!customSoundBuffer || !AudioCtx) return;
+  try {
+    const ctx  = new AudioCtx();
+    const src  = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    src.buffer = customSoundBuffer;
+    src.connect(gain); gain.connect(ctx.destination);
+    gain.gain.value = (volume ?? 60) / 100;
+    src.start(0);
+    src.onended = () => ctx.close();
+  } catch(e) { /* audio error */ }
+}
+
+// ── Desktop Notifications ─────────────────────────────────────────
+const IS_FILE_PROTO = location.protocol === 'file:';
+
+function updateNotifUI() {
+  const supported = 'Notification' in window;
+  const dot    = $('notifDot');
+  const label  = $('notifLabel');
+  const banner = $('notifBanner');
+  const banMsg = $('notifBannerMsg');
+  const banBtn = $('btnGrantNotif');
+
+  if (!supported) {
+    dot.className = 'dot err'; label.textContent = 'SIN SOPORTE';
+    banMsg.innerHTML = '<b style="color:var(--red)">Tu navegador no soporta notificaciones.</b> El audio de alerta seguirá funcionando.';
+    banBtn.style.display = 'none';
+    banner.style.display = 'flex';
+    return;
+  }
+
+  const p = Notification.permission;
+
+  if (IS_FILE_PROTO && p !== 'granted') {
+    // file:// — permissions are locked in most browsers; explain and offer try
+    dot.className = 'dot warn'; label.textContent = 'FILE://';
+    banMsg.innerHTML = `<b style="color:var(--amber)">Abrís desde file://</b> — Chrome/Firefox bloquean notificaciones del sistema en archivos locales. <b>Solución:</b> Servir con Live Server, http-server o similar (localhost). El audio ✓ funciona igual.`;
+    banBtn.style.display = 'inline-flex';
+    banBtn.textContent = 'Intentar de todas formas';
+    banner.style.display = 'flex';
+    return;
+  }
+
+  if (p === 'granted') {
+    dot.className = 'dot on'; label.textContent = 'NOTIF ✓';
+    banner.style.display = 'none';
+  } else if (p === 'denied') {
+    dot.className = 'dot err'; label.textContent = 'NOTIF ✗';
+    banMsg.innerHTML = '<b style="color:var(--red)">Permiso bloqueado.</b> Habilitá notificaciones en Configuración del navegador → Sitios → Permitir para esta URL. El audio ✓ funciona igual.';
+    banBtn.style.display = 'none';
+    banner.style.display = 'flex';
+  } else {
+    dot.className = 'dot warn'; label.textContent = 'NOTIF ?';
+    banMsg.innerHTML = 'Concedé permiso para recibir <b>notificaciones del sistema</b> (visibles sobre otras pestañas). El audio ya funciona sin permiso.';
+    banBtn.style.display = 'inline-flex';
+    banBtn.textContent = 'Conceder permiso';
+    banner.style.display = 'flex';
+  }
+}
+
+async function requestNotifPerm() {
+  if (!('Notification' in window)) return;
+  const result = await Notification.requestPermission();
+  updateNotifUI();
+  if (result === 'granted') {
+    // Fire a confirmation notification so user sees it worked
+    setTimeout(() => {
+      try {
+        new Notification('WORKBENCH ✓', {
+          body: 'Notificaciones activadas. Las alertas aparecerán aquí.',
+          tag: 'workbench-setup',
+        });
+      } catch(e) {}
+    }, 300);
+  }
+}
+
+function fireDesktopNotif(msg) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    const n = new Notification('WORKBENCH — Checkpoint ⏰', {
+      body: msg,
+      requireInteraction: true,
+      tag: 'workbench-alert',
+      renotify: true,
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+  } catch(e) { /* blocked silently */ }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg) {
+  $('toastMsg').textContent = msg;
+  $('toast').classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 12000);
+}
+function hideToast() { $('toast').classList.remove('show'); }
+
+// ── Trigger alert (all channels) ─────────────────────────────────
+function triggerAlert(isTest = false) {
+  const msg = $('notifMsg').value.trim() || 'Adjunta tu progreso: Es momento de validar tus avances';
+  // Use custom sound if loaded, otherwise generated tone
+  if (customSoundBuffer) {
+    playCustomSound(getCurVol());
+  } else {
+    playAlert(getCurVol(), getCurFreq());
+  }
+  showToast(msg);
+  fireDesktopNotif(msg);
+  $('alertCard').classList.add('alerting');
+  setTimeout(() => $('alertCard').classList.remove('alerting'), 3000);
+  if (!isTest) addLog(`Alerta de progreso disparada`, 'alert');
+}
+
+// ── Alert system (timer-driven) ───────────────────────────────────
+// alertEnabled = user has the feature ON (toggle)
+// Alerts only count down while the stopwatch is RUNNING.
+// They auto-start when the clock starts, auto-stop when paused/reset.
+let alertEnabled   = false;
+let alertInterval  = null;
+let alertRemaining = 0;
+let alertTotal     = 0;
+
+function getAlertSecs() {
+  const h = parseInt($('alertH').value) || 0;
+  const m = parseInt($('alertM').value) || 0;
+  const s = parseInt($('alertS').value) || 0;
+  return h * 3600 + m * 60 + s;
+}
+
+function applyPreset(h, m, s) {
+  $('alertH').value = h;
+  $('alertM').value = m;
+  $('alertS').value = s;
+  // If currently counting, restart with new value
+  if (alertInterval) {
+    clearInterval(alertInterval);
+    alertTotal     = getAlertSecs();
+    alertRemaining = alertTotal;
+    if (alertTotal > 0) alertInterval = setInterval(alertTick, 1000);
+    renderAlertUI();
+  }
+}
+
+// Called by the stopwatch when it STARTS
+function alertsStartWithTimer() {
+  if (!alertEnabled) return;
+  alertTotal = getAlertSecs();
+  if (!alertTotal) return;
+  // Always reset to full interval each time the clock restarts
+  alertRemaining = alertTotal;
+  renderAlertUI();
+  clearInterval(alertInterval);
+  alertInterval = setInterval(alertTick, 1000);
+}
+
+// Called by the stopwatch when it PAUSES or RESETS
+function alertsStopWithTimer() {
+  clearInterval(alertInterval);
+  alertInterval  = null;
+  alertRemaining = 0;
+  alertTotal     = 0;
+  renderAlertUI();
+}
+
+function alertTick() {
+  alertRemaining = Math.max(0, alertRemaining - 1);
+  renderAlertUI();
+  if (alertRemaining <= 0) {
+    triggerAlert();
+    // Restart countdown for next cycle
+    alertTotal     = getAlertSecs();
+    alertRemaining = alertTotal;
+    renderAlertUI();
+  }
+}
+
+function renderAlertUI() {
+  const t = alertTotal;
+  const r = alertRemaining;
+  if (!t || !alertEnabled) {
+    $('alertCountdown').textContent = alertEnabled ? '⏸ en pausa' : '—';
+    $('alertBar').style.width = '0%';
+    $('alertCard').classList.remove('alerting');
+    return;
+  }
+  $('alertCountdown').textContent = fmtTime(r * 1000);
+  const pct = Math.min(100, ((t - r) / t) * 100);
+  $('alertBar').style.width = pct + '%';
+  $('alertBar').style.background = pct > 80 ? 'var(--red)' : pct > 60 ? 'var(--amber)' : 'var(--green)';
+  if (pct > 80) $('alertCard').classList.add('alerting');
+  else $('alertCard').classList.remove('alerting');
+}
+
+function setAlertToggleUI(active) {
+  if (active) {
+    $('btnAlertToggle').innerHTML = `<svg width="11" height="11" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg> Alertas ON`;
+    $('btnAlertToggle').className = 'btn b-green';
+    $('alertCard').classList.add('active');
+  } else {
+    $('btnAlertToggle').innerHTML = `<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg> Alertas OFF`;
+    $('btnAlertToggle').className = 'btn b-amber';
+    $('alertCard').classList.remove('active','alerting');
+  }
+}
+
+$('btnAlertToggle').onclick = () => {
+  alertEnabled = !alertEnabled;
+  setAlertToggleUI(alertEnabled);
+  if (!alertEnabled) {
+    alertsStopWithTimer();
+    addLog('Alertas desactivadas', 'alert');
+  } else {
+    // Only start countdown if the stopwatch is already running
+    if (swRunning) {
+      alertsStartWithTimer();
+      addLog('Alertas activadas — arranca con el cronómetro', 'alert');
+    } else {
+      renderAlertUI();
+      addLog('Alertas configuradas — arrancarán cuando inicies el cronómetro', 'alert');
+    }
+  }
+};
+
+// ── STOPWATCH ─────────────────────────────────────────────────────
+let swRunning      = false;
+let swElapsed      = 0;    // ms total current session
+let swStartTime    = null;
+let swInterval     = null;
+let swSegStart     = 0;    // elapsed ms at segment start
+let swTramoCount   = 0;
+let tramoLogEmpty  = true;
+let focusMode      = false;
+
+// Grand total accumulator — persists across resets
+let swGrandTotal   = 0;    // ms total all sessions combined
+let swSessionCount = 0;    // how many complete sessions (resets)
+
+function renderGrandTotal() {
+  $('grandTotalDisplay').textContent = fmtTime(swGrandTotal);
+  const label = swSessionCount === 0
+    ? '— 0 sesiones'
+    : `— ${swSessionCount} sesión${swSessionCount > 1 ? 'es' : ''}`;
+  $('grandTotalSessions').textContent = label;
+}
+
+function resetGrandTotal() {
+  swGrandTotal   = 0;
+  swSessionCount = 0;
+  renderGrandTotal();
+  addLog('Total acumulado reiniciado a cero', 'reset');
+}
+
+function swTick() {
+  swElapsed = Date.now() - swStartTime;
+  renderSW();
+  if (focusMode) {
+    document.title = `⏱ ${fmtTime(swElapsed)} — WORKBENCH`;
+  }
+}
+
+function renderSW() {
+  const total = Math.floor(swElapsed / 1000);
+  const h = String(Math.floor(total / 3600)).padStart(2,'0');
+  const m = String(Math.floor((total % 3600) / 60)).padStart(2,'0');
+  const s = String(total % 60).padStart(2,'0');
+  const ms= String(Math.floor((swElapsed % 1000) / 10)).padStart(2,'0');
+  $('swDisplay').childNodes[0].textContent = `${h}:${m}:${s}`;
+  $('swMs').textContent = `.${ms}`;
+}
+
+function setSwState(state) {
+  const dot = $('swDot'); const st = $('swStatus');
+  const card = $('swCard');
+  const hdrDot = $('hdrDot'); const hdrSt = $('hdrStatus');
+  const disp = $('swDisplay');
+  if (state === 'running') {
+    dot.className = 'dot on'; st.textContent = 'EN SESIÓN';
+    hdrDot.className = 'dot on'; hdrSt.textContent = 'EN SESIÓN';
+    card.classList.add('active'); card.classList.remove('alerting');
+    disp.className = 'sw-display running';
+  } else if (state === 'paused') {
+    dot.className = 'dot'; st.textContent = 'PAUSADO';
+    hdrDot.className = 'dot warn'; hdrSt.textContent = 'PAUSADO';
+    card.classList.remove('active','alerting');
+    disp.className = 'sw-display paused';
+  } else {
+    dot.className = 'dot'; st.textContent = 'LISTO';
+    hdrDot.className = 'dot'; hdrSt.textContent = 'INACTIVO';
+    card.classList.remove('active','alerting');
+    disp.className = 'sw-display';
+  }
+}
+
+function addTramo(tramo, total) {
+  swTramoCount++;
+  const el = $('tramoLog');
+  if (tramoLogEmpty) { el.innerHTML = ''; tramoLogEmpty = false; }
+  const row = document.createElement('div');
+  row.className = 'log-row l-tramo';
+  row.style.cssText = 'font-variant-numeric:tabular-nums;';
+  row.innerHTML = `
+    <span style="color:var(--mut);flex-shrink:0;">#${String(swTramoCount).padStart(2,'0')}</span>
+    <div style="flex:1;">
+      <div>Tramo: <span style="color:var(--violet);font-weight:700;">${fmtTimeHuman(tramo)}</span></div>
+      <div style="color:var(--mut);">Acumulado total: <span style="color:var(--amber);">${fmtTimeHuman(total)}</span></div>
+    </div>`;
+  el.prepend(row);
+}
+
+$('btnStart').onclick = () => {
+  if (!swRunning) {
+    swStartTime = Date.now() - swElapsed;
+    swSegStart  = swElapsed;
+    swInterval  = setInterval(swTick, 50);
+    swRunning   = true;
+    $('btnStart').disabled = true;
+    $('btnPause').disabled = false;
+    setSwState('running');
+    addLog('Sesión iniciada', 'start');
+    alertsStartWithTimer();   // ← auto-start alerts if enabled
+    updateBeforeUnload();
+  }
+};
+
+$('btnPause').onclick = () => {
+  if (swRunning) {
+    clearInterval(swInterval);
+    swRunning = false;
+    $('btnStart').disabled = false;
+    $('btnPause').disabled = true;
+    const tramo = swElapsed - swSegStart;
+    // Add tramo to grand total
+    swGrandTotal += tramo;
+    renderGrandTotal();
+    addTramo(tramo, swElapsed);
+    setSwState('paused');
+    alertsStopWithTimer();    // ← stop alerts while paused
+    addLog(
+      `Sesión pausada — Tramo: <b style="color:var(--violet)">${fmtTimeHuman(tramo)}</b> · Sesión: <b style="color:var(--amber)">${fmtTimeHuman(swElapsed)}</b> · <span style="color:var(--amber)">Total global: <b>${fmtTimeHuman(swGrandTotal)}</b></span>`,
+      'pause'
+    );
+    updateBeforeUnload();
+  }
+};
+
+$('btnReset').onclick = () => {
+  clearInterval(swInterval);
+  alertsStopWithTimer();    // ← stop alerts on reset
+  // If timer was running when reset, add remaining untracked time to grand total
+  if (swRunning || swElapsed > 0) {
+    const untracked = swElapsed - swSegStart;
+    if (untracked > 0 && swRunning) swGrandTotal += untracked;
+    // Count this as a completed session only if meaningful time was recorded
+    if (swElapsed > 500) swSessionCount++;
+    renderGrandTotal();
+    addLog(
+      `Sesión reiniciada — Duración: <b style="color:var(--amber)">${fmtTimeHuman(swElapsed)}</b> · <span style="color:var(--amber)">⟶ Total global acumulado: <b>${fmtTimeHuman(swGrandTotal)}</b> (${swSessionCount} sesión${swSessionCount !== 1 ? 'es' : ''})</span>`,
+      'reset'
+    );
+  } else {
+    addLog('Cronómetro reiniciado', 'reset');
+  }
+  swRunning = false; swElapsed = 0; swSegStart = 0; swTramoCount = 0;
+  $('swDisplay').childNodes[0].textContent = '00:00:00';
+  $('swMs').textContent = '.00';
+  $('btnStart').disabled = false;
+  $('btnPause').disabled = true;
+  $('tramoLog').innerHTML = '<div style="font-size:10px;color:var(--mut);padding:10px 0;text-align:center;">— Sin tramos aún —</div>';
+  tramoLogEmpty = true;
+  setSwState('idle');
+  if (!focusMode) document.title = 'WORKBENCH — Dashboard de Trabajo';
+  updateBeforeUnload();
+};
+
+// ── Focus mode ────────────────────────────────────────────────────
+$('btnFocus').onclick = () => {
+  focusMode = !focusMode;
+  const badge = $('focusBadge');
+  const card  = $('swCard');
+  if (focusMode) {
+    $('btnFocus').className = 'btn b-violet active';
+    badge.style.display = 'block';
+    card.classList.add('focus-on');
+    card.querySelector('.card-top').style.background = 'var(--violet)';
+    addLog('Modo Enfoque activado — timer visible en pestaña', 'focus');
+  } else {
+    $('btnFocus').className = 'btn b-violet';
+    badge.style.display = 'none';
+    card.classList.remove('focus-on');
+    card.querySelector('.card-top').style.background = '';
+    document.title = 'WORKBENCH — Dashboard de Trabajo';
+  }
+};
+
+// ── beforeunload guard ────────────────────────────────────────────
+function updateBeforeUnload() {
+  if (swRunning) {
+    window.onbeforeunload = (e) => {
+      e.preventDefault();
+      e.returnValue = '¿Seguro que querés salir? El cronómetro sigue corriendo.';
+      return e.returnValue;
+    };
+  } else {
+    window.onbeforeunload = null;
+  }
+}
+
+// ── Settings panel toggle ─────────────────────────────────────────
+$('btnSettings').onclick = () => {
+  const p = $('settingsPanel');
+  p.classList.toggle('open');
+  $('btnSettings').classList.toggle('active');
+};
+
+// ── FILE PROCESSING ───────────────────────────────────────────────
+const dropZone  = $('dropZone');
+const fileInput = $('fileInput');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+});
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFiles(fileInput.files); fileInput.value = ''; });
+
+async function handleFiles(fileList) {
+  const files = Array.from(fileList);
+  if (!files.length) return;
+
+  // Reset alert timer on any upload (only if alerts are running, i.e. timer is active)
+  if (alertEnabled && alertInterval) {
+    // Restart countdown from full interval
+    clearInterval(alertInterval);
+    alertTotal     = getAlertSecs();
+    alertRemaining = alertTotal;
+    if (alertTotal > 0) alertInterval = setInterval(alertTick, 1000);
+    renderAlertUI();
+    addLog(`${files.length} archivo(s) subido(s) — temporizador de alerta reiniciado`, 'file');
+  } else {
+    addLog(`${files.length} archivo(s) recibido(s)`, 'file');
+  }
+
+  showQueue(files);
+
+  // ── Decision logic ─────────────────────────────────────
+  // Multiple files → ZIP
+  if (files.length > 1) {
+    await compressToZip(files);
+    return;
+  }
+
+  const file = files[0];
+  const type = file.type;
+  const name = file.name.toLowerCase();
+
+  if (type.startsWith('image/') || /\.(png|jpe?g|gif|bmp|tiff?|webp|avif|heic)$/i.test(name)) {
+    await convertImageToWebP(file);
+  } else if (type.startsWith('video/') || /\.(mp4|mov|avi|mkv|flv|wmv)$/i.test(name)) {
+    await convertVideoToWebM(file);
+  } else {
+    // PDF, DOCX, or any other single file → ZIP
+    await compressToZip([file]);
+  }
+
+  clearQueue();
+}
+
+function showQueue(files) {
+  const el = $('queueList');
+  el.innerHTML = files.map(f =>
+    `<div style="font-size:10px;color:var(--mut);padding:2px 0;">· ${f.name} <span style="color:var(--bg5);">(${fmtBytes(f.size)})</span></div>`
+  ).join('');
+}
+function clearQueue() {
+  setTimeout(() => { $('queueList').innerHTML = ''; }, 2000);
+}
+
+// ── Image → WebP ──────────────────────────────────────────────────
+async function convertImageToWebP(file) {
+  dropZone.classList.add('processing');
+  try {
+    const url    = URL.createObjectURL(file);
+    const img    = await loadImg(url);
+    URL.revokeObjectURL(url);
+
+    const canvas = document.createElement('canvas');
+    canvas.width  = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.getContext('2d').drawImage(img, 0, 0);
+
+    const webpUrl  = canvas.toDataURL('image/webp', 0.82);
+    const webpBlob = dataURLtoBlob(webpUrl);
+    const newName  = file.name.replace(/\.[^.]+$/, '.webp');
+    const savings  = Math.round((1 - webpBlob.size / file.size) * 100);
+
+    triggerDownload(URL.createObjectURL(webpBlob), newName);
+
+    addResultCard({
+      name: newName, orig: file.size, final: webpBlob.size,
+      savings, type:'WebP', color:'var(--green)',
+    });
+    addLog(`Imagen → WebP: ${file.name} (${savings >= 0 ? '-':'+'} ${Math.abs(savings)}%)`, 'convert');
+  } catch(e) {
+    addResultCard({ name: file.name, error: e.message, type:'Error' });
+  }
+  dropZone.classList.remove('processing');
+}
+
+// ── Video → WebM (Canvas + MediaRecorder) ─────────────────────────
+async function convertVideoToWebM(file) {
+  const overlay   = $('vidOverlay');
+  const vidStatus = $('vidStatus');
+  const vidProg   = $('vidProgress');
+
+  overlay.style.display = 'flex';
+  dropZone.classList.add('processing');
+
+  try {
+    const url   = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.src   = url;
+    video.muted = false;
+    video.preload = 'metadata';
+    video.crossOrigin = 'anonymous';
+
+    await new Promise((res, rej) => {
+      video.onloadedmetadata = res;
+      video.onerror = () => rej(new Error('No se pudo cargar el video'));
+    });
+
+    const { videoWidth: vw, videoHeight: vh, duration } = video;
+    vidStatus.textContent = `Re-codificando ${vw}×${vh} · ${Math.round(duration)}s → WebM`;
+
+    const scale  = Math.min(1, 1280 / vw);
+    const canvas = document.createElement('canvas');
+    canvas.width  = Math.round(vw * scale);
+    canvas.height = Math.round(vh * scale);
+    const ctx2   = canvas.getContext('2d');
+
+    // Capture video + audio
+    const canvasStream = canvas.captureStream(30);
+    let combined = canvasStream;
+
+    try {
+      const actx   = new AudioCtx();
+      const src    = actx.createMediaElementSource(video);
+      const adest  = actx.createMediaStreamDestination();
+      src.connect(adest); src.connect(actx.destination);
+      combined = new MediaStream([
+        ...canvasStream.getVideoTracks(),
+        ...adest.stream.getAudioTracks()
+      ]);
+    } catch(e) { /* audio capture failed, video-only */ }
+
+    const mimeType = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']
+      .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+
+    const recorder = new MediaRecorder(combined, { mimeType });
+    const chunks   = [];
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+    const result = await new Promise((res, rej) => {
+      recorder.onstop = () => {
+        URL.revokeObjectURL(url);
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        res(blob);
+      };
+      video.onerror = rej;
+      recorder.start(250);
+
+      // Update progress
+      const progInterval = setInterval(() => {
+        if (duration > 0) {
+          const pct = Math.min(99, (video.currentTime / duration) * 100);
+          vidProg.style.width = pct + '%';
+        }
+      }, 300);
+
+      video.onended = () => { clearInterval(progInterval); vidProg.style.width='100%'; recorder.stop(); };
+
+      // Draw frames
+      const drawFrame = () => {
+        if (!video.ended && !video.paused) {
+          ctx2.drawImage(video, 0, 0, canvas.width, canvas.height);
+          requestAnimationFrame(drawFrame);
+        }
+      };
+      video.play().then(drawFrame).catch(rej);
+    });
+
+    const newName = file.name.replace(/\.[^.]+$/, '.webm');
+    const savings = Math.round((1 - result.size / file.size) * 100);
+    triggerDownload(URL.createObjectURL(result), newName);
+
+    addResultCard({
+      name: newName, orig: file.size, final: result.size,
+      savings, type:'WebM', color:'var(--blue)',
+    });
+    addLog(`Video → WebM: ${file.name} (${savings >= 0 ? '-':'+'} ${Math.abs(savings)}%)`, 'convert');
+
+  } catch(e) {
+    // Fallback: ZIP the video
+    vidStatus.textContent = 'Conversión no disponible — empaquetando en ZIP...';
+    await compressToZip([file]);
+    addLog(`Video empaquetado en ZIP (la conversión a WebM requiere un navegador compatible)`, 'file');
+  }
+
+  overlay.style.display = 'none';
+  vidProg.style.width = '0%';
+  dropZone.classList.remove('processing');
+}
+
+// ── Files → ZIP ───────────────────────────────────────────────────
+async function compressToZip(files) {
+  dropZone.classList.add('processing');
+  try {
+    const zip = new JSZip();
+    let totalOrig = 0;
+    for (const f of files) {
+      zip.file(f.name, await f.arrayBuffer());
+      totalOrig += f.size;
+    }
+    const blob    = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{level:6} });
+    const savings = Math.round((1 - blob.size / totalOrig) * 100);
+    const ts      = new Date().toISOString().slice(0,19).replace(/[T:]/g,'-');
+    const name    = `workbench_${ts}.zip`;
+
+    triggerDownload(URL.createObjectURL(blob), name);
+
+    addResultCard({
+      name, orig: totalOrig, final: blob.size,
+      savings, type:'ZIP', color:'var(--amber)',
+      fileCount: files.length,
+    });
+    addLog(`${files.length} archivo(s) → ZIP: ${name} (${savings >= 0 ? '-':'+'} ${Math.abs(savings)}%)`, 'file');
+  } catch(e) {
+    addResultCard({ name:'compresión', error: e.message, type:'Error' });
+  }
+  dropZone.classList.remove('processing');
+}
+
+function addResultCard(r) {
+  const container = $('results');
+  const div = document.createElement('div');
+  div.className = 'res-card';
+
+  if (r.error) {
+    div.innerHTML = `<span style="color:var(--red);">✕ ${r.name} — ${r.error}</span>`;
+  } else {
+    const sign = r.savings >= 0 ? '-' : '+';
+    const scol = r.savings >= 0 ? 'var(--green)' : 'var(--red)';
+    const barW = Math.max(0, Math.min(100, 100 - r.savings));
+    div.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <span class="pill" style="color:${r.color};border-color:${r.color};">${r.type}</span>
+        <span style="font-size:14px;font-weight:300;color:${scol};">${sign}${Math.abs(r.savings)}%</span>
+      </div>
+      <div style="font-size:10px;word-break:break-all;margin-bottom:5px;color:var(--txt);">${r.name}</div>
+      <div style="font-size:9px;color:var(--mut);margin-bottom:6px;">
+        ${r.fileCount ? r.fileCount+' archivos · ' : ''}
+        <span style="color:var(--txt);">${fmtBytes(r.orig)}</span>
+        <span style="margin:0 4px;">→</span>
+        <span style="color:var(--txt);">${fmtBytes(r.final)}</span>
+      </div>
+      <div class="pbar"><div class="pfill" style="width:${barW}%;background:${scol};transition:none;"></div></div>`;
+  }
+  container.prepend(div);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────
+function loadImg(url) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload  = () => res(img);
+    img.onerror = () => rej(new Error('No se pudo cargar la imagen'));
+    img.src = url;
+  });
+}
+function dataURLtoBlob(dataURL) {
+  const [head, data] = dataURL.split(',');
+  const mime = head.match(/:(.*?);/)[1];
+  const raw  = atob(data);
+  const arr  = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+function triggerDownload(url, filename) {
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────
+(async function init() {
+  setSwState('idle');
+  setAlertToggleUI(false);
+  renderAlertUI();
+  updateNotifUI();
+  // Auto-request notification permission (only on non-file:// where it's likely to work)
+  if ('Notification' in window && Notification.permission === 'default' && !IS_FILE_PROTO) {
+    await requestNotifPerm();
+  }
+})();
+</script>
+</body>
+</html>
