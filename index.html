@@ -326,6 +326,27 @@ body::before {
 ::-webkit-scrollbar-thumb { background: var(--bdr2); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--mut); }
 
+/* ── Checkpoint state ── */
+.drop-zone.checkpoint {
+  border-color: var(--red) !important;
+  animation: checkpointPulse 1.2s ease infinite !important;
+}
+.drop-zone.checkpoint::before { opacity: 1 !important; background: var(--red-lo) !important; }
+@keyframes checkpointPulse {
+  0%,100% { border-color: var(--red); box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+  50%      { border-color: rgba(239,68,68,.5); box-shadow: 0 0 0 6px rgba(239,68,68,.08); }
+}
+.sw-display.checkpoint { color: var(--red) !important; }
+#checkpointOverlay {
+  position: absolute; inset: 0; z-index: 3;
+  background: rgba(239,68,68,.06);
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; border-radius: 3px; backdrop-filter: blur(1px);
+}
+
+/* ── Toast skip button ── */
+#toastSkip { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
 /* ── Presets ── */
 .preset-btn {
   padding: 5px 12px;
@@ -545,6 +566,17 @@ body::before {
             </div>
           </div>
 
+          <!-- Checkpoint overlay -->
+          <div id="checkpointOverlay">
+            <svg width="28" height="28" fill="none" stroke="var(--red)" stroke-width="1.5" viewBox="0 0 24 24" style="animation:checkpointPulse 1.2s ease infinite;border-radius:50%;"><path stroke-linecap="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+            <div style="font-size:13px;font-weight:700;color:var(--red);letter-spacing:.05em;">SUBÍ TU PROGRESO</div>
+            <div style="font-size:10px;color:var(--mut);text-align:center;line-height:1.6;">
+              Cronómetro pausado por checkpoint<br>
+              <label for="fileInput" style="color:var(--red);cursor:pointer;text-decoration:underline dotted;font-weight:700;">Hacé clic aquí o arrastrá un archivo</label><br>
+              para reanudar automáticamente
+            </div>
+          </div>
+
           <svg width="32" height="32" fill="none" stroke="var(--mut)" stroke-width="1.2" viewBox="0 0 24 24" id="dropIcon">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
           </svg>
@@ -649,9 +681,12 @@ body::before {
 
         <!-- Note -->
         <div style="margin-top:10px;padding:8px 10px;background:var(--bg1);border-radius:2px;border:1px solid var(--bdr);font-size:9px;color:var(--mut);line-height:1.6;">
-          ⟶ Las alertas sólo corren mientras el cronómetro está activo<br>
-          ⟶ Al pausar o reiniciar, se detienen automáticamente<br>
-          ⟶ Subir un archivo reinicia el contador dentro de la sesión
+          ⟶ Alertas corren sólo mientras el cronómetro está activo<br>
+          ⟶ Al dispararse, <b style="color:var(--txt);">ambos cronómetros se pausan</b><br>
+          ⟶ Subir un archivo reanuda todo automáticamente<br>
+          <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--bdr);color:var(--mut);" id="checkpointStats">
+            ✓ 0 completados  ·  ✕ 0 omitidos
+          </div>
         </div>
 
       </div>
@@ -684,12 +719,14 @@ body::before {
   <div style="display:flex;align-items:flex-start;gap:10px;">
     <svg width="18" height="18" fill="none" stroke="var(--red)" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0;margin-top:1px"><path stroke-linecap="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
     <div style="flex:1;">
-      <div style="font-size:9px;font-weight:700;color:var(--red);letter-spacing:.12em;margin-bottom:4px;">CHECKPOINT DE PROGRESO</div>
+      <div style="font-size:9px;font-weight:700;color:var(--red);letter-spacing:.12em;margin-bottom:4px;" id="toastTitle">CHECKPOINT DE PROGRESO</div>
       <div style="font-size:11px;line-height:1.5;color:var(--txt);" id="toastMsg"></div>
+      <div style="font-size:9px;color:var(--mut);margin-top:5px;" id="toastSubMsg"></div>
     </div>
   </div>
-  <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:6px;">
-    <button class="btn b-red" onclick="hideToast()" style="font-size:9px;padding:5px 12px;">Entendido ✓</button>
+  <div id="toastSkip">
+    <button class="btn" onclick="skipCheckpoint()" id="btnSkipCheckpoint" style="font-size:9px;padding:5px 10px;display:none;">Omitir checkpoint →</button>
+    <button class="btn b-red" onclick="hideToast()" style="font-size:9px;padding:5px 12px;margin-left:auto;">Entendido ✓</button>
   </div>
 </div>
 
@@ -931,28 +968,167 @@ function fireDesktopNotif(msg) {
 
 // ── Toast ─────────────────────────────────────────────────────────
 let toastTimer = null;
-function showToast(msg) {
-  $('toastMsg').textContent = msg;
+function showToast(msg, isCheckpoint = false) {
+  $('toastTitle').textContent  = isCheckpoint ? '⏸ CHECKPOINT — SESIÓN PAUSADA' : 'CHECKPOINT DE PROGRESO';
+  $('toastTitle').style.color  = isCheckpoint ? 'var(--red)' : 'var(--red)';
+  $('toastMsg').textContent    = msg;
+  $('toastSubMsg').textContent = isCheckpoint
+    ? 'Arrastrá o subí un archivo para reanudar ambos cronómetros.'
+    : '';
+  $('btnSkipCheckpoint').style.display = isCheckpoint ? 'inline-flex' : 'none';
   $('toast').classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(hideToast, 12000);
+  // Checkpoint toasts stay until dismissed manually
+  if (!isCheckpoint) toastTimer = setTimeout(hideToast, 12000);
 }
 function hideToast() { $('toast').classList.remove('show'); }
+
+// ── Checkpoint state ──────────────────────────────────────────────
+let alertBlocked      = false;   // session is halted waiting for file
+let checkpointCount   = 0;       // successfully completed checkpoints
+let checkpointSkips   = 0;       // skipped checkpoints
+let checkpointBlockAt = 0;       // Date.now() when blocked (to measure response time)
+
+function blockSession() {
+  // 1. Pause the stopwatch (exactly like pause button but silent)
+  if (swRunning) {
+    clearInterval(swInterval);
+    swRunning = false;
+    $('btnStart').disabled = true;   // can't manually restart while blocked
+    $('btnPause').disabled = true;
+    const tramo = swElapsed - swSegStart;
+    swGrandTotal += tramo;
+    renderGrandTotal();
+    addTramo(tramo, swElapsed);
+  }
+  // 2. Pause the alert countdown
+  clearInterval(alertInterval);
+  alertInterval = null;
+
+  // 3. Update state
+  alertBlocked      = true;
+  checkpointBlockAt = Date.now();
+
+  // 4. Visual: stopwatch
+  $('swDot').className  = 'dot err';
+  $('swStatus').textContent = 'CHECKPOINT — ESPERANDO ARCHIVO';
+  $('hdrDot').className = 'dot err';
+  $('hdrStatus').textContent = 'CHECKPOINT';
+  $('swDisplay').className   = 'sw-display checkpoint';
+  $('swCard').classList.add('alerting');
+
+  // 5. Visual: alert countdown shows blocked state
+  $('alertCountdown').textContent = '⏸ BLOQUEADO';
+  $('alertBar').style.width = '100%';
+  $('alertBar').style.background = 'var(--red)';
+  $('alertCard').classList.add('alerting');
+
+  // 6. Visual: dropzone — show overlay
+  $('dropZone').classList.add('checkpoint');
+  $('checkpointOverlay').style.display = 'flex';
+  $('dropIcon').style.display = 'none';
+
+  // 7. Focus mode title
+  if (focusMode) document.title = `⛔ CHECKPOINT — WORKBENCH`;
+
+  addLog(`Checkpoint disparado — cronómetro pausado. Subí un archivo para reanudar.`, 'alert');
+}
+
+function unblockSession(fromFile = false) {
+  if (!alertBlocked) return;
+  alertBlocked = false;
+
+  // Response time tracking
+  const responseMs = Date.now() - checkpointBlockAt;
+  checkpointCount++;
+  updateCheckpointStats();
+
+  // 1. Clear checkpoint visuals on dropzone
+  $('dropZone').classList.remove('checkpoint');
+  $('checkpointOverlay').style.display = 'none';
+  $('dropIcon').style.display = '';
+
+  // 2. Resume stopwatch
+  swSegStart  = swElapsed;
+  swStartTime = Date.now() - swElapsed;
+  swInterval  = setInterval(swTick, 50);
+  swRunning   = true;
+  $('btnStart').disabled = true;
+  $('btnPause').disabled = false;
+  setSwState('running');
+
+  // 3. Restart alert countdown fresh
+  alertsStartWithTimer();
+
+  // 4. Hide toast
+  hideToast();
+
+  // 5. Play a positive confirm sound
+  playConfirmSound();
+
+  // 6. Log it
+  const respStr = fmtTimeHuman(responseMs);
+  addLog(
+    `✓ Checkpoint completado${fromFile ? ' — archivo subido' : ' (omitido)'} · Tiempo de respuesta: <b style="color:var(--green)">${respStr}</b> · Total checkpoints: <b style="color:var(--amber)">${checkpointCount}</b>`,
+    'start'
+  );
+
+  // 7. Update beforeunload
+  updateBeforeUnload();
+}
+
+function skipCheckpoint() {
+  checkpointSkips++;
+  updateCheckpointStats();
+  unblockSession(false);
+  addLog(`Checkpoint omitido (${checkpointSkips} omisión${checkpointSkips !== 1 ? 'es' : ''} total)`, 'alert');
+}
+
+function updateCheckpointStats() {
+  const el = $('checkpointStats');
+  if (!el) return;
+  el.textContent = `✓ ${checkpointCount} completado${checkpointCount !== 1 ? 's' : ''}  ·  ✕ ${checkpointSkips} omitido${checkpointSkips !== 1 ? 's' : ''}`;
+}
+
+function playConfirmSound() {
+  if (!AudioCtx) return;
+  try {
+    const ctx = new AudioCtx();
+    // Quick ascending 3-note confirm
+    [[600,0],[800,.12],[1000,.24]].forEach(([hz, dt]) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine'; osc.frequency.value = hz;
+      const t = ctx.currentTime + dt;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime((getCurVol()/100) * .3, t + .04);
+      gain.gain.exponentialRampToValueAtTime(.001, t + .14);
+      osc.start(t); osc.stop(t + .16);
+    });
+    setTimeout(() => ctx.close(), 1500);
+  } catch(e) {}
+}
 
 // ── Trigger alert (all channels) ─────────────────────────────────
 function triggerAlert(isTest = false) {
   const msg = $('notifMsg').value.trim() || 'Adjunta tu progreso: Es momento de validar tus avances';
-  // Use custom sound if loaded, otherwise generated tone
   if (customSoundBuffer) {
     playCustomSound(getCurVol());
   } else {
     playAlert(getCurVol(), getCurFreq());
   }
-  showToast(msg);
   fireDesktopNotif(msg);
-  $('alertCard').classList.add('alerting');
-  setTimeout(() => $('alertCard').classList.remove('alerting'), 3000);
-  if (!isTest) addLog(`Alerta de progreso disparada`, 'alert');
+
+  if (!isTest) {
+    // Real alert: pause everything and wait for file
+    showToast(msg, true);
+    blockSession();
+  } else {
+    // Test: just show the toast and sound, don't block
+    showToast(msg, false);
+    $('alertCard').classList.add('alerting');
+    setTimeout(() => $('alertCard').classList.remove('alerting'), 3000);
+  }
 }
 
 // ── Alert system (timer-driven) ───────────────────────────────────
@@ -1010,17 +1186,17 @@ function alertTick() {
   alertRemaining = Math.max(0, alertRemaining - 1);
   renderAlertUI();
   if (alertRemaining <= 0) {
+    clearInterval(alertInterval);
+    alertInterval = null;
     triggerAlert();
-    // Restart countdown for next cycle
-    alertTotal     = getAlertSecs();
-    alertRemaining = alertTotal;
-    renderAlertUI();
+    // blockSession() now owns the state — countdown restarts only after file upload
   }
 }
 
 function renderAlertUI() {
   const t = alertTotal;
   const r = alertRemaining;
+  if (alertBlocked) return;  // blockSession() owns the UI when blocked
   if (!t || !alertEnabled) {
     $('alertCountdown').textContent = alertEnabled ? '⏸ en pausa' : '—';
     $('alertBar').style.width = '0%';
@@ -1238,11 +1414,14 @@ $('btnFocus').onclick = () => {
 
 // ── beforeunload guard ────────────────────────────────────────────
 function updateBeforeUnload() {
-  if (swRunning) {
+  if (swRunning || alertBlocked) {
     window.onbeforeunload = (e) => {
       e.preventDefault();
-      e.returnValue = '¿Seguro que querés salir? El cronómetro sigue corriendo.';
-      return e.returnValue;
+      const msg = alertBlocked
+        ? '¡Hay un checkpoint pendiente! Subí un archivo antes de salir.'
+        : '¿Seguro que querés salir? El cronómetro sigue corriendo.';
+      e.returnValue = msg;
+      return msg;
     };
   } else {
     window.onbeforeunload = null;
@@ -1274,9 +1453,20 @@ async function handleFiles(fileList) {
   const files = Array.from(fileList);
   if (!files.length) return;
 
-  // Reset alert timer on any upload (only if alerts are running, i.e. timer is active)
+  // If session is blocked by checkpoint, this upload unblocks everything
+  if (alertBlocked) {
+    // Process the file first (async), then unblock after
+    showQueue(files);
+    (async () => {
+      await processFilesLogic(files);
+      clearQueue();
+      unblockSession(true);
+    })();
+    return;
+  }
+
+  // Normal upload — reset alert timer if running mid-session
   if (alertEnabled && alertInterval) {
-    // Restart countdown from full interval
     clearInterval(alertInterval);
     alertTotal     = getAlertSecs();
     alertRemaining = alertTotal;
@@ -1288,6 +1478,9 @@ async function handleFiles(fileList) {
   }
 
   showQueue(files);
+  await processFilesLogic(files);
+  clearQueue();
+}
 
   // ── Decision logic ─────────────────────────────────────
   // Multiple files → ZIP
@@ -1320,6 +1513,23 @@ function showQueue(files) {
 }
 function clearQueue() {
   setTimeout(() => { $('queueList').innerHTML = ''; }, 2000);
+}
+
+async function processFilesLogic(files) {
+  if (files.length > 1) {
+    await compressToZip(files);
+    return;
+  }
+  const file = files[0];
+  const type = file.type;
+  const name = file.name.toLowerCase();
+  if (type.startsWith('image/') || /\.(png|jpe?g|gif|bmp|tiff?|webp|avif|heic)$/i.test(name)) {
+    await convertImageToWebP(file);
+  } else if (type.startsWith('video/') || /\.(mp4|mov|avi|mkv|flv|wmv)$/i.test(name)) {
+    await convertVideoToWebM(file);
+  } else {
+    await compressToZip([file]);
+  }
 }
 
 // ── Image → WebP ──────────────────────────────────────────────────
